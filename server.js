@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -8,51 +7,39 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Frontend static files serve karne ke liye
+// Serve static files from the 'public' folder (agar index.html public folder mein hai, nahi toh current directory se)
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-// Active rooms ko track karne ke liye
-const activeRooms = {};
-
-// 6-digit random code generator (Uppercase + Numerical)
-function generateRoomCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Confusing letters (O, 0, I, 1) hata diye hain
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
+const rooms = {};
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Sender room create karega
+    // Sender creates a room with a random 6-digit code
     socket.on('create-room', (callback) => {
-        let code = generateRoomCode();
-        while (activeRooms[code]) {
-            code = generateRoomCode(); // Ensure uniqueness
-        }
-        activeRooms[code] = socket.id;
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        rooms[code] = socket.id;
         socket.join(code);
         callback({ success: true, code: code });
-        console.log(`Room created with code: ${code}`);
+        console.log(`Room created: ${code} by ${socket.id}`);
     });
 
-    // Receiver room join karega code daalkar
+    // Receiver joins the room using the code
     socket.on('join-room', (code, callback) => {
-        const senderSocketId = activeRooms[code];
-        if (senderSocketId) {
+        const senderId = rooms[code];
+        if (senderId) {
             socket.join(code);
-            // Sender ko batao ki receiver aa gaya hai, connection shuru karo
-            io.to(senderSocketId).emit('receiver-joined', socket.id);
             callback({ success: true });
+            // Notify sender that receiver has joined
+            io.to(senderId).emit('receiver-joined', socket.id);
+            console.log(`User ${socket.id} joined room: ${code}`);
         } else {
             callback({ success: false, message: 'Invalid or expired code!' });
         }
     });
 
-    // WebRTC Signaling Relay (Offer, Answer, ICE Candidates)
+    // WebRTC Signaling (Offer, Answer, ICE candidates exchange)
     socket.on('signal', (data) => {
         io.to(data.target).emit('signal', {
             sender: socket.id,
@@ -61,18 +48,18 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        // Clean up rooms if user disconnects
-        for (let code in activeRooms) {
-            if (activeRooms[code] === socket.id) {
-                delete activeRooms[code];
+        console.log('User disconnected:', socket.id);
+        // Clean up rooms if needed
+        for (let code in rooms) {
+            if (rooms[code] === socket.id) {
+                delete rooms[code];
                 break;
             }
         }
-        console.log('User disconnected:', socket.id);
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
