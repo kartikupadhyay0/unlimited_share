@@ -143,6 +143,9 @@
             peerConnection = new RTCPeerConnection(rtcConfig);
             dataChannel = peerConnection.createDataChannel('file-transfer');
             
+            // High speed optimization: binaryType ko 'arraybuffer' set karein
+            dataChannel.binaryType = 'arraybuffer';
+
             dataChannel.onopen = () => {
                 showStatus('Secure Tunnel Active. Sending file...');
                 sendFileInChunks();
@@ -163,19 +166,34 @@
         }
 
         function sendFileInChunks() {
-            const chunkSize = 65536;
+            // Chunk size increased to 1MB for super-fast transfer
+            const chunkSize = 1048576; 
             const reader = new FileReader();
             let offset = 0;
+            
             dataChannel.send(JSON.stringify({ name: selectedFile.name, size: selectedFile.size }));
 
             reader.onload = (e) => {
+                // Buffer queue control to prevent freezing/stuck issues on large files
+                if (dataChannel.bufferedAmount > 16 * 1024 * 1024) {
+                    setTimeout(() => {
+                        reader.readAsArrayBuffer(selectedFile.slice(offset, offset + chunkSize));
+                    }, 50);
+                    return;
+                }
+
                 dataChannel.send(e.target.result);
                 offset += e.target.result.byteLength;
                 const percent = Math.round((offset / selectedFile.size) * 100);
                 updateProgress(percent, `Sending: ${percent}%`);
-                if (offset < selectedFile.size) readNextChunk();
-                else showStatus('File sent successfully!');
+
+                if (offset < selectedFile.size) {
+                    readNextChunk();
+                } else {
+                    showStatus('File sent successfully!');
+                }
             };
+
             function readNextChunk() {
                 reader.readAsArrayBuffer(selectedFile.slice(offset, offset + chunkSize));
             }
@@ -199,6 +217,7 @@
             peerConnection = new RTCPeerConnection(rtcConfig);
             peerConnection.ondatachannel = (e) => { 
                 dataChannel = e.channel; 
+                dataChannel.binaryType = 'arraybuffer';
                 let incomingFile = { name: '', size: 0, buffer: [], receivedSize: 0 };
                 
                 dataChannel.onmessage = (event) => {
