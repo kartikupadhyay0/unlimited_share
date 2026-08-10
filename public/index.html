@@ -142,8 +142,6 @@
         function setupSenderPeer() {
             peerConnection = new RTCPeerConnection(rtcConfig);
             dataChannel = peerConnection.createDataChannel('file-transfer');
-            
-            // High speed optimization: binaryType ko 'arraybuffer' set karein
             dataChannel.binaryType = 'arraybuffer';
 
             dataChannel.onopen = () => {
@@ -166,38 +164,40 @@
         }
 
         function sendFileInChunks() {
-            // Chunk size increased to 1MB for super-fast transfer
-            const chunkSize = 1048576; 
+            const chunkSize = 262144; // 256KB - Stable size for smooth video transfer without freezing
             const reader = new FileReader();
             let offset = 0;
             
             dataChannel.send(JSON.stringify({ name: selectedFile.name, size: selectedFile.size }));
 
-            reader.onload = (e) => {
-                // Buffer queue control to prevent freezing/stuck issues on large files
-                if (dataChannel.bufferedAmount > 16 * 1024 * 1024) {
-                    setTimeout(() => {
-                        reader.readAsArrayBuffer(selectedFile.slice(offset, offset + chunkSize));
-                    }, 50);
+            dataChannel.bufferedAmountLowThreshold = 65536; 
+
+            dataChannel.onbufferedamountlow = () => {
+                readAndSendNextChunk();
+            };
+
+            function readAndSendNextChunk() {
+                if (offset >= selectedFile.size) {
+                    showStatus('File sent successfully!');
                     return;
                 }
+                const slice = selectedFile.slice(offset, offset + chunkSize);
+                reader.readAsArrayBuffer(slice);
+            }
 
+            reader.onload = (e) => {
                 dataChannel.send(e.target.result);
                 offset += e.target.result.byteLength;
                 const percent = Math.round((offset / selectedFile.size) * 100);
                 updateProgress(percent, `Sending: ${percent}%`);
 
-                if (offset < selectedFile.size) {
-                    readNextChunk();
-                } else {
-                    showStatus('File sent successfully!');
+                if (dataChannel.bufferedAmount > 65536) {
+                    return; 
                 }
+                readAndSendNextChunk();
             };
 
-            function readNextChunk() {
-                reader.readAsArrayBuffer(selectedFile.slice(offset, offset + chunkSize));
-            }
-            readNextChunk();
+            readAndSendNextChunk();
         }
 
         function joinRoom() {
@@ -296,7 +296,6 @@
             const cy = canvas.height / 2;
             const t = Date.now() * 0.0005;
             
-            // Central Glow Core
             ctx.shadowBlur = 50; 
             ctx.shadowColor = style.getPropertyValue('--accent');
             ctx.fillStyle = style.getPropertyValue('--accent');
@@ -305,7 +304,6 @@
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            // Rotating Background Orbit Rings & Floating Elements
             floatingIcons.forEach((item, index) => {
                 ctx.strokeStyle = style.getPropertyValue('--orbit');
                 ctx.lineWidth = 1.5;
