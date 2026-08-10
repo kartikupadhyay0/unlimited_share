@@ -1,0 +1,13 @@
+{
+  "name": "unlimited_share",
+  "version": "1.0.0",
+  "description": "Secure P2P File Transfer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "socket.io": "^4.8.3"
+  }
+}

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unlimited Share | Dynamic Theme</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { 
+            --bg: #050505; 
+            --text: #e5e5e5; 
+            --main-title: #ffffff;
+            --accent: #ea580c; 
+            --glass: rgba(10, 10, 10, 0.8); 
+            --orbit: rgba(255,255,255,0.05); 
+            --subtext: rgba(229, 229, 229, 0.6);
+            --tab-inactive: rgba(255, 255, 255, 0.5);
+        }
+        .light-mode { 
+            --bg: #f8f9fa; 
+            --text: #1a1a1a; 
+            --main-title: #111111;
+            --accent: #dc2626; 
+            --glass: rgba(255, 255, 255, 0.95); 
+            --orbit: rgba(0,0,0,0.1); 
+            --subtext: rgba(26, 26, 26, 0.85);
+            --tab-inactive: #1a1a1a;
+        }
+        body { font-family: 'Space Grotesk', sans-serif; background-color: var(--bg); color: var(--text); transition: background 0.4s, color 0.4s; overflow-x: hidden; }
+        .obsidian-glass { background: var(--glass); backdrop-filter: blur(40px); border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .text-accent { color: var(--accent); }
+        .bg-accent { background-color: var(--accent); }
+        .main-title-color { color: var(--main-title); }
+        .subtext-color { color: var(--subtext); }
+        .tab-inactive-color { color: var(--tab-inactive); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <canvas id="solarCanvas"></canvas>
+
+    <!-- Theme Toggle Button -->
+    <button onclick="toggleTheme()" class="fixed top-6 right-6 z-50 p-3 rounded-full bg-white/10 dark:bg-white/10 backdrop-blur-md border border-gray-500/20 hover:scale-110 transition-transform shadow-md">
+        <span id="themeIcon">🌓</span>
+    </button>
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+        <header class="mb-10 text-center">
+            <h1 class="text-6xl font-bold tracking-tighter italic main-title-color">Unlimited Share</h1>
+            <p class="text-accent mt-2 font-mono text-sm tracking-[0.2em] uppercase font-semibold">Secure P2P Protocol v2.0</p>
+        </header>
+
+        <div class="obsidian-glass p-8 rounded-[2rem] w-full max-w-lg">
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-8 bg-black/10 dark:bg-black/10 p-1 rounded-2xl border border-gray-500/10">
+                <button id="sendTabBtn" onclick="switchTab('send')" class="flex-1 py-3 bg-accent text-white rounded-xl font-bold transition-all shadow">Send</button>
+                <button id="receiveTabBtn" onclick="switchTab('receive')" class="flex-1 py-3 tab-inactive-color hover:opacity-100 rounded-xl font-bold transition-all">Receive</button>
+            </div>
+
+            <!-- Sender Section -->
+            <div id="sendSection">
+                <div class="border border-gray-500/30 rounded-2xl py-12 text-center hover:border-accent transition-all cursor-pointer relative">
+                    <input type="file" id="fileInput" class="absolute inset-0 opacity-0 cursor-pointer">
+                    <p id="fileLabelText" class="subtext-color font-medium">Drag file or <span class="font-bold main-title-color">browse</span></p>
+                </div>
+                <button id="generateBtn" onclick="createRoom()" class="w-full mt-6 py-4 bg-accent text-white rounded-xl font-bold hover:opacity-90 transition-all shadow-lg">Generate Code</button>
+                <div id="codeCard" class="hidden mt-4 p-5 bg-black/40 dark:bg-black/40 rounded-xl text-center border border-gray-500/10">
+                    <p class="text-xs uppercase tracking-widest text-accent mb-1 font-bold">Your Secure Code:</p>
+                    <p id="displayCode" class="text-4xl font-bold tracking-[0.2em] font-mono main-title-color">------</p>
+                </div>
+            </div>
+
+            <!-- Receiver Section -->
+            <div id="receiveSection" class="hidden">
+                <input type="text" id="codeInput" placeholder="6-DIGIT CODE" maxlength="6" class="w-full bg-transparent p-4 rounded-xl text-center border border-gray-500/30 outline-none text-2xl font-mono tracking-widest text-accent placeholder:opacity-40 font-bold">
+                <button onclick="joinRoom()" class="w-full mt-6 py-4 bg-accent text-white rounded-xl font-bold hover:opacity-90 transition-all shadow-lg">Connect & Download</button>
+            </div>
+
+            <!-- Status & Progress -->
+            <div id="progressContainer" class="hidden mt-6 bg-black/20 p-4 rounded-xl border border-gray-500/10">
+                <p id="statusText" class="text-sm mb-2 font-semibold main-title-color">Connecting...</p>
+                <div class="w-full bg-gray-500/20 h-2 rounded-full overflow-hidden"><div id="progressBar" class="bg-accent h-full w-0 transition-all"></div></div>
+            </div>
+            <div id="downloadContainer" class="hidden mt-4"></div>
+        </div>
+
+        <footer class="mt-12 subtext-color text-xs text-center space-y-1 font-semibold">
+            <p>&copy; 2026 Unlimited Share. All Rights Reserved.</p>
+            <p>Designed & Developed by <span class="main-title-color font-bold">Kartik Upadhyay</span></p>
+        </footer>
+    </div>
+
+    <!-- Socket.io & WebRTC Logic Script -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        function toggleTheme() {
+            document.documentElement.classList.toggle('light-mode');
+            document.getElementById('themeIcon').innerText = document.documentElement.classList.contains('light-mode') ? '☀️' : '🌙';
+        }
+
+        const socket = io();
+        let peerConnection, dataChannel, selectedFile, remoteSocketId;
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        function switchTab(mode) {
+            document.getElementById('sendSection').classList.toggle('hidden', mode !== 'send');
+            document.getElementById('receiveSection').classList.toggle('hidden', mode !== 'receive');
+            
+            const sendBtn = document.getElementById('sendTabBtn');
+            const receiveBtn = document.getElementById('receiveTabBtn');
+
+            if (mode === 'send') {
+                sendBtn.className = 'flex-1 py-3 bg-accent text-white rounded-xl font-bold transition-all shadow';
+                receiveBtn.className = 'flex-1 py-3 tab-inactive-color hover:opacity-100 rounded-xl font-bold transition-all';
+            } else {
+                receiveBtn.className = 'flex-1 py-3 bg-accent text-white rounded-xl font-bold transition-all shadow';
+                sendBtn.className = 'flex-1 py-3 tab-inactive-color hover:opacity-100 rounded-xl font-bold transition-all';
+            }
+        }
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            selectedFile = e.target.files[0];
+            if(selectedFile) document.getElementById('fileLabelText').innerHTML = `<span class="text-accent font-bold">${selectedFile.name}</span>`;
+        });
+
+        function createRoom() {
+            if (!selectedFile) return alert('Please select a file first!');
+            socket.emit('create-room', (res) => {
+                if(res.success) {
+                    document.getElementById('displayCode').innerText = res.code;
+                    document.getElementById('codeCard').classList.remove('hidden');
+                    document.getElementById('generateBtn').classList.add('hidden');
+                    showStatus('Waiting for receiver to enter code...');
+                    setupSenderPeer();
+                }
+            });
+        }
+
+        function setupSenderPeer() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            dataChannel = peerConnection.createDataChannel('file-transfer');
+            
+            dataChannel.onopen = () => {
+                showStatus('Secure Tunnel Active. Sending file...');
+                sendFileInChunks();
+            };
+
+            peerConnection.onicecandidate = (e) => {
+                if(e.candidate) socket.emit('signal', { target: remoteSocketId, signal: { type: 'ice', candidate: e.candidate } });
+            };
+
+            socket.on('receiver-joined', async (id) => {
+                remoteSocketId = id;
+                showStatus('Receiver connected! Establishing secure tunnel...');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('signal', { target: remoteSocketId, signal: { type: 'offer', offer } });
+            });
+            handleSignaling();
+        }
+
+        function sendFileInChunks() {
+            const chunkSize = 65536;
+            const reader = new FileReader();
+            let offset = 0;
+            dataChannel.send(JSON.stringify({ name: selectedFile.name, size: selectedFile.size }));
+
+            reader.onload = (e) => {
+                dataChannel.send(e.target.result);
+                offset += e.target.result.byteLength;
+                const percent = Math.round((offset / selectedFile.size) * 100);
+                updateProgress(percent, `Sending: ${percent}%`);
+                if (offset < selectedFile.size) readNextChunk();
+                else showStatus('File sent successfully!');
+            };
+            function readNextChunk() {
+                reader.readAsArrayBuffer(selectedFile.slice(offset, offset + chunkSize));
+            }
+            readNextChunk();
+        }
+
+        function joinRoom() {
+            const code = document.getElementById('codeInput').value.trim().toUpperCase();
+            if(code.length !== 6) return alert('Please enter a valid 6-digit code!');
+            socket.emit('join-room', code, (res) => {
+                if(res.success) {
+                    showStatus('Connected to sender! Preparing download...');
+                    setupReceiverPeer();
+                } else {
+                    alert(res.message);
+                }
+            });
+        }
+
+        function setupReceiverPeer() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            peerConnection.ondatachannel = (e) => { 
+                dataChannel = e.channel; 
+                let incomingFile = { name: '', size: 0, buffer: [], receivedSize: 0 };
+                
+                dataChannel.onmessage = (event) => {
+                    if (typeof event.data === 'string') {
+                        const meta = JSON.parse(event.data);
+                        incomingFile.name = meta.name;
+                        incomingFile.size = meta.size;
+                        showStatus(`Receiving ${incomingFile.name}...`);
+                    } else {
+                        incomingFile.buffer.push(event.data);
+                        incomingFile.receivedSize += event.data.byteLength;
+                        const percent = Math.round((incomingFile.receivedSize / incomingFile.size) * 100);
+                        updateProgress(percent, `Receiving: ${percent}%`);
+
+                        if (incomingFile.receivedSize === incomingFile.size) {
+                            showStatus('Download Complete!');
+                            const blob = new Blob(incomingFile.buffer);
+                            const url = URL.createObjectURL(blob);
+                            const dc = document.getElementById('downloadContainer');
+                            dc.classList.remove('hidden');
+                            dc.innerHTML = `<a href="${url}" download="${incomingFile.name}" class="block w-full bg-accent font-semibold py-4 rounded-xl text-center text-white shadow-lg">Download File Now</a>`;
+                        }
+                    }
+                };
+            };
+            peerConnection.onicecandidate = (e) => {
+                if(e.candidate) socket.emit('signal', { target: remoteSocketId, signal: { type: 'ice', candidate: e.candidate } });
+            };
+            handleSignaling();
+        }
+
+        function handleSignaling() {
+            socket.on('signal', async (data) => {
+                remoteSocketId = data.sender;
+                if(data.signal.type === 'offer') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal.offer));
+                    const ans = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(ans);
+                    socket.emit('signal', { target: remoteSocketId, signal: { type: 'answer', answer: ans } });
+                } else if(data.signal.type === 'answer') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal.answer));
+                } else if(data.signal.type === 'ice') {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
+                }
+            });
+        }
+
+        function showStatus(t) { 
+            document.getElementById('progressContainer').classList.remove('hidden'); 
+            document.getElementById('statusText').innerText = t; 
+        }
+
+        function updateProgress(p, t) {
+            document.getElementById('statusText').innerText = t;
+            document.getElementById('progressBar').style.width = p + '%';
+        }
+
+        // --- Orbit Animation & Floating Elements Canvas ---
+        const canvas = document.getElementById('solarCanvas');
+        const ctx = canvas.getContext('2d');
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+
+        const floatingIcons = [
+            { r: 260, speed: 0.0025, size: 22, color: 'var(--accent)' },
+            { r: 380, speed: -0.0018, size: 16, color: 'var(--text)' },
+            { r: 480, speed: 0.0012, size: 26, color: 'var(--accent)' }
+        ];
+
+        function draw() {
+            const style = getComputedStyle(document.documentElement);
+            ctx.fillStyle = style.getPropertyValue('--bg');
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const t = Date.now() * 0.0005;
+            
+            // Central Glow Core
+            ctx.shadowBlur = 50; 
+            ctx.shadowColor = style.getPropertyValue('--accent');
+            ctx.fillStyle = style.getPropertyValue('--accent');
+            ctx.beginPath(); 
+            ctx.arc(cx, cy, 45, 0, Math.PI * 2); 
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Rotating Background Orbit Rings & Floating Elements
+            floatingIcons.forEach((item, index) => {
+                ctx.strokeStyle = style.getPropertyValue('--orbit');
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(cx, cy, item.r, 0, Math.PI * 2);
+                ctx.stroke();
+
+                const angle = t * (item.speed * 40) + (index * 2.5);
+                const x = cx + Math.cos(angle) * item.r;
+                const y = cy + Math.sin(angle) * item.r;
+
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = style.getPropertyValue('--accent');
+                ctx.fillStyle = item.color;
+                ctx.beginPath();
+                ctx.arc(x, y, item.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+</body>
+</html>
