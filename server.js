@@ -7,18 +7,27 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files from the 'public' folder (agar index.html public folder mein hai, nahi toh current directory se)
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
 const rooms = {};
 
+// Helper: Unique 6-digit code generator
+function generateUniqueCode() {
+    let code;
+    do {
+        code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    } while (rooms[code]); // Jab tak unique code na mile
+    return code;
+}
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Sender creates a room with a random 6-digit code
+    // Sender creates a room
     socket.on('create-room', (callback) => {
-        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const code = generateUniqueCode();
         rooms[code] = socket.id;
         socket.join(code);
         callback({ success: true, code: code });
@@ -31,6 +40,7 @@ io.on('connection', (socket) => {
         if (senderId) {
             socket.join(code);
             callback({ success: true });
+            
             // Notify sender that receiver has joined
             io.to(senderId).emit('receiver-joined', socket.id);
             console.log(`User ${socket.id} joined room: ${code}`);
@@ -41,17 +51,22 @@ io.on('connection', (socket) => {
 
     // WebRTC Signaling (Offer, Answer, ICE candidates exchange)
     socket.on('signal', (data) => {
-        io.to(data.target).emit('signal', {
-            sender: socket.id,
-            signal: data.signal
-        });
+        if (data.target) {
+            io.to(data.target).emit('signal', {
+                sender: socket.id,
+                signal: data.signal
+            });
+        }
     });
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        // Clean up rooms if needed
+        
+        // Clean up rooms and notify peers
         for (let code in rooms) {
             if (rooms[code] === socket.id) {
+                // Notify everyone in room that sender disconnected
+                socket.to(code).emit('peer-disconnected');
                 delete rooms[code];
                 break;
             }

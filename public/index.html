@@ -177,7 +177,8 @@
             const reader = new FileReader();
             let offset = 0;
             
-            dataChannel.send(JSON.stringify({ name: selectedFile.name, size: selectedFile.size }));
+            // Fixed: Included file type in metadata
+            dataChannel.send(JSON.stringify({ name: selectedFile.name, size: selectedFile.size, type: selectedFile.type }));
 
             dataChannel.bufferedAmountLowThreshold = 65536; 
 
@@ -227,13 +228,15 @@
             peerConnection.ondatachannel = (e) => { 
                 dataChannel = e.channel; 
                 dataChannel.binaryType = 'arraybuffer';
-                let incomingFile = { name: '', size: 0, buffer: [], receivedSize: 0 };
+                // Fixed: Added type property
+                let incomingFile = { name: '', size: 0, type: '', buffer: [], receivedSize: 0 };
                 
                 dataChannel.onmessage = (event) => {
                     if (typeof event.data === 'string') {
                         const meta = JSON.parse(event.data);
                         incomingFile.name = meta.name;
                         incomingFile.size = meta.size;
+                        incomingFile.type = meta.type; // Fixed: Save file type from sender
                         showStatus(`Receiving ${incomingFile.name}...`);
                     } else {
                         incomingFile.buffer.push(event.data);
@@ -243,7 +246,8 @@
 
                         if (incomingFile.receivedSize === incomingFile.size) {
                             showStatus('Download Complete!');
-                            const blob = new Blob(incomingFile.buffer);
+                            // Fixed: Blob created with exact media type
+                            const blob = new Blob(incomingFile.buffer, { type: incomingFile.type || 'application/octet-stream' });
                             const url = URL.createObjectURL(blob);
                             const dc = document.getElementById('downloadContainer');
                             dc.classList.remove('hidden');
